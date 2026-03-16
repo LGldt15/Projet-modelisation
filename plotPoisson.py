@@ -1,6 +1,6 @@
-
 import numpy as np
 import matplotlib.patches as patches
+from matplotlib.patches import Circle
 from matplotlib.transforms import Affine2D
 from matplotlib.widgets import Button
 import matplotlib.cm as cm
@@ -27,11 +27,16 @@ def theta_to_color(theta):
     theta = np.mod(theta, TWO_PI)
     return CMAP(theta / TWO_PI)
    
-def plotPoisson(ax, position, angle, lw=0):
+def plotPoisson(ax, position, angle, lw=0, size = 1, pred = False):
+    if pred : 
+        color = "red"
+    else:
+        color=theta_to_color(angle)
+        
     fish = patches.Polygon(
-        FISH_SHAPE,
+        size*FISH_SHAPE,
         closed=True,
-        facecolor=theta_to_color(angle),
+        facecolor= color,
         edgecolor="black",
         linewidth=lw
     )
@@ -48,12 +53,15 @@ def plotPoisson(ax, position, angle, lw=0):
     return fish
     
    
-def majPoisson(ax, poissons, positions, angles, L):
+def majPoisson(ax, poissons, positions, angles, L, size = 1, pred = False):
     poss = positions % L
-
-    colors = theta_to_color(angles)
     
-    scale = 0.4
+    if pred : 
+        colors = ["red" for i in range(len(poissons))]
+    else:
+        colors = theta_to_color(angles)
+    
+    scale = 0.4 * size
     
     for fish, pos, angle, col in zip(poissons, poss, angles, colors):
         tr = fish._local_transform
@@ -62,6 +70,7 @@ def majPoisson(ax, poissons, positions, angles, L):
         tr.rotate(angle + np.pi)
         tr.translate(pos[0], pos[1])
         fish.set_facecolor(col)
+
 
 def add_stop_button(fig, ani):
     # Ajouter un axe pour le bouton (position et taille sur la figure)
@@ -121,4 +130,109 @@ def animationBanc(N, L, f, updatefunction, phi = None):
     )
     btn = add_stop_button(plt.gcf(),  anim)
     return anim, btn
+    
+def animationBancPredateurs(N, L, f, updatefunction, phi = None, Npred = 1):
+    # Initialise les positions et angles des poissons
+    positions = np.random.uniform(0, L, (N, 2))
+    angles = np.random.uniform(-np.pi, np.pi, N)
+    
+    positionsPred = np.random.uniform(0, L, (Npred, 2))
+    anglesPred = np.random.uniform(-np.pi, np.pi, Npred)
+    
+    # Génère la figure et fixe les axes
+    fig, ax = plt.subplots(figsize = (10, 10))
+    ax.set_aspect("equal", adjustable='box') 
+    ax.set_xlim(0, L)
+    ax.set_ylim(0, L)
+    #fig.tight_layout()
 
+    # Initialisation des poissons sur le graphe
+    poissons = [plotPoisson(ax, positions[i], angles[i]) for i in range(N)]
+    requins = [plotPoisson(ax, positionsPred[i], anglesPred[i]) for i in range(Npred)]
+    if phi is not None:
+        text_phi = ax.text(
+            0.02, 0.98, r"$\Phi$"+" = {}".format(phi(angles)),
+            transform=ax.transAxes,
+            ha="left", va="top",
+            fontsize=12,
+            bbox=dict(facecolor="white", alpha=0.7, edgecolor="none")
+        )
+    else:
+        text_phi = None
+
+    def animate(frame):
+        nonlocal positions, angles, positionsPred, anglesPred
+        # Appele la fonction update pour déplacer les poissons
+        positions, angles, positionsPred, anglesPred = updatefunction(positions, angles, positionsPred, anglesPred, L, f)
+        majPoisson(ax, poissons, positions, angles, L)
+        majPoisson(ax, requins, positionsPred, anglesPred, L, pred=True, size = 3)
+        if text_phi is not None:
+            value = phi(angles)
+            text_phi.set_text(r"$\Phi$"+ f"= {value:.3f}")
+        return poissons
+
+    anim = FuncAnimation(
+        fig, animate,
+        interval=50,
+        blit=False,
+        cache_frame_data=False
+    )
+    btn = add_stop_button(plt.gcf(),  anim)
+    return anim, btn
+
+def animationBancObstacles(N, L, f, updatefunction, phi = None, obstacles = [[2, 2, 1, 0]]):
+# Initialise les positions et angles des poissons
+    positions = np.random.uniform(0, L, (N, 2))
+    angles = np.random.uniform(-np.pi, np.pi, N)
+    
+    # Génère la figure et fixe les axes
+    fig, ax = plt.subplots(figsize = (10, 10))
+    ax.set_aspect("equal", adjustable='box') 
+    ax.set_xlim(0, L)
+    ax.set_ylim(0, L)
+    #fig.tight_layout()
+
+    # Initialisation des poissons sur le graphe
+    poissons = [plotPoisson(ax, positions[i], angles[i]) for i in range(N)]
+    
+    obstaclesPatch = []
+    for obstacle in obstacles:
+        if obstacle[3] == 0:
+            color = "blue"
+        else:
+            color = "red"
+        x, y = obstacle[0], obstacle[1]
+        for i in range(-1, 2):
+            for j in range(-1, 2):
+                cercle = Circle((obstacle[0] + i*L, obstacle[1]+j*L), obstacle[2], facecolor=color, edgecolor='black', linewidth=2)
+                ax.add_patch(cercle)
+    if phi is not None:
+        text_phi = ax.text(
+            0.02, 0.98, r"$\Phi$"+" = {}".format(phi(angles)),
+            transform=ax.transAxes,
+            ha="left", va="top",
+            fontsize=12,
+            bbox=dict(facecolor="white", alpha=0.7, edgecolor="none")
+        )
+    else:
+        text_phi = None
+
+    def animate(frame):
+        nonlocal positions, angles
+        # Appele la fonction update pour déplacer les poissons
+        positions, angles = updatefunction(positions, angles, L, f)
+        majPoisson(ax, poissons, positions, angles, L)
+        
+        if text_phi is not None:
+            value = phi(angles)
+            text_phi.set_text(r"$\Phi$"+ f"= {value:.3f}")
+        return poissons
+
+    anim = FuncAnimation(
+        fig, animate,
+        interval=50,
+        blit=False,
+        cache_frame_data=False
+    )
+    btn = add_stop_button(plt.gcf(),  anim)
+    return anim, btn
