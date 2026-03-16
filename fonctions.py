@@ -1,4 +1,4 @@
-%matplotlib widget
+ani = None
 
 from plotPoisson import plotPoisson
 def plotPoissons(positions, angles):
